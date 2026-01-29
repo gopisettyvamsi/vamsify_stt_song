@@ -41,10 +41,10 @@ export default function CatchMePuppy() {
 
     return (
         <>
-            {/* Floating Message */}
-            <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 pointer-events-none">
-                <div className="bg-purple-600/90 backdrop-blur-sm px-6 py-3 rounded-full shadow-2xl border border-purple-400/50">
-                    <p className="text-white font-bold text-sm sm:text-base">{message}</p>
+            {/* Floating Message - Positioned below header */}
+            <div className="fixed top-20 sm:top-24 left-1/2 -translate-x-1/2 z-50 pointer-events-none">
+                <div className="bg-purple-600/90 backdrop-blur-sm px-4 sm:px-6 py-2 sm:py-3 rounded-full shadow-2xl border border-purple-400/50">
+                    <p className="text-white font-bold text-xs sm:text-sm">{message}</p>
                 </div>
             </div>
 
