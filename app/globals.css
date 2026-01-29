@@ -35,3 +35,42 @@
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
   background: linear-gradient(180deg, rgba(168, 85, 247, 0.6), rgba(99, 102, 241, 0.6));
 }
+
+/* Flowing River Animation */
+@keyframes river-flow {
+  0% {
+    transform: translateX(0);
+  }
+
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+body::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 200%;
+  height: 100%;
+  background:
+    linear-gradient(90deg, transparent 0%, rgba(139, 92, 246, 0.1) 25%, transparent 50%, rgba(139, 92, 246, 0.1) 75%, transparent 100%);
+  animation: river-flow 15s linear infinite;
+  pointer-events: none;
+  z-index: 1;
+}
+
+body::after {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 200%;
+  height: 100%;
+  background:
+    linear-gradient(90deg, transparent 0%, rgba(236, 72, 153, 0.08) 30%, transparent 60%, rgba(236, 72, 153, 0.08) 90%, transparent 100%);
+  animation: river-flow 20s linear infinite reverse;
+  pointer-events: none;
+  z-index: 1;
+}

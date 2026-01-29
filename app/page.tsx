@@ -5,6 +5,7 @@ import Image from "next/image";
 import FileUploader from "@/components/FileUploader";
 import TranscriptionView from "@/components/TranscriptionView";
 import SettingsModal from "@/components/SettingsModal";
+import CatchMePuppy from "@/components/CatchMePuppy";
 
 export default function Home() {
   const [data, setData] = useState<{ text: string; vtt: string; audioUrl: string } | null>(null);
@@ -141,6 +142,9 @@ export default function Home() {
       </div>
 
       {/* Footer */}
+
+      {/* Catch Me Puppy Game */}
+      <CatchMePuppy />
 
       {/* Settings Modal */}
       <SettingsModal
