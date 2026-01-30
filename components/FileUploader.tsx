@@ -68,14 +68,21 @@ export default function FileUploader({ onTranscriptionComplete, apiKey }: FileUp
         try {
             let fileToUpload = file;
 
+            console.log('File size:', file.size, 'bytes (', (file.size / 1024 / 1024).toFixed(2), 'MB)');
+
             // Compress if file is larger than 4.5MB
             if (file.size > 4.5 * 1024 * 1024) {
+                console.log('File exceeds 4.5MB, starting compression...');
                 setIsCompressing(true);
                 fileToUpload = await compressAudio(file, (progress) => {
                     setCompressionProgress(progress);
+                    console.log('Compression progress:', progress);
                 });
+                console.log('Compression complete. New size:', fileToUpload.size, 'bytes (', (fileToUpload.size / 1024 / 1024).toFixed(2), 'MB)');
                 setIsCompressing(false);
                 setCompressionProgress(null);
+            } else {
+                console.log('File is under 4.5MB, no compression needed');
             }
 
             const formData = new FormData();
