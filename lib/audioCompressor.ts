@@ -1,3 +1,5 @@
+import lamejs from 'lamejs';
+
 export interface CompressionProgress {
     stage: 'decoding' | 'encoding' | 'complete';
     progress: number; // 0-100
@@ -47,17 +49,29 @@ export async function compressAudio(
         // Calculate compression ratio needed
         const compressionRatio = file.size / MAX_SIZE;
 
-        // Reduce sample rate based on compression needed
-        let targetSampleRate = 16000; // Default for speech
+        // Determine bitrate based on compression needed
+        let bitrate = 64; // Default low bitrate for speech
+        if (compressionRatio > 4) {
+            bitrate = 32; // Very aggressive compression
+        } else if (compressionRatio > 2.5) {
+            bitrate = 48;
+        } else if (compressionRatio > 1.5) {
+            bitrate = 64;
+        } else {
+            bitrate = 96;
+        }
+
+        // Determine sample rate
+        let targetSampleRate = 16000; // Good for speech
         if (compressionRatio > 3) {
-            targetSampleRate = 12000; // More aggressive compression
+            targetSampleRate = 12000; // More aggressive
         } else if (compressionRatio > 2) {
             targetSampleRate = 16000;
         } else {
             targetSampleRate = 22050;
         }
 
-        // Resample audio
+        // Resample audio to mono
         const offlineContext = new OfflineAudioContext(
             1, // Mono for smaller size
             audioBuffer.duration * targetSampleRate,
@@ -71,7 +85,7 @@ export async function compressAudio(
 
         onProgress?.({
             stage: 'encoding',
-            progress: 70,
+            progress: 60,
             originalSize: file.size,
         });
 
@@ -79,17 +93,25 @@ export async function compressAudio(
 
         onProgress?.({
             stage: 'encoding',
-            progress: 85,
+            progress: 75,
             originalSize: file.size,
         });
 
-        // Convert to WAV format (simple, no external dependencies)
-        const wavBlob = audioBufferToWav(renderedBuffer);
+        // Convert to MP3 using lamejs
+        const mp3Data = encodeToMp3(renderedBuffer, bitrate);
+
+        onProgress?.({
+            stage: 'encoding',
+            progress: 90,
+            originalSize: file.size,
+        });
+
+        const mp3Blob = new Blob(mp3Data, { type: 'audio/mp3' });
 
         const compressedFile = new File(
-            [wavBlob],
-            file.name.replace(/\.[^.]+$/, '.wav'),
-            { type: 'audio/wav' }
+            [mp3Blob],
+            file.name.replace(/\.[^.]+$/, '.mp3'),
+            { type: 'audio/mp3' }
         );
 
         onProgress?.({
@@ -99,6 +121,8 @@ export async function compressAudio(
             currentSize: compressedFile.size,
         });
 
+        console.log(`Compression: ${(file.size / 1024 / 1024).toFixed(2)}MB → ${(compressedFile.size / 1024 / 1024).toFixed(2)}MB (${bitrate}kbps, ${targetSampleRate}Hz)`);
+
         return compressedFile;
     } catch (error) {
         console.error('Compression error:', error);
@@ -106,67 +130,35 @@ export async function compressAudio(
     }
 }
 
-// Helper function to convert AudioBuffer to WAV
-function audioBufferToWav(buffer: AudioBuffer): Blob {
-    const length = buffer.length * buffer.numberOfChannels * 2 + 44;
-    const arrayBuffer = new ArrayBuffer(length);
-    const view = new DataView(arrayBuffer);
-    const channels: Float32Array[] = [];
-    let offset = 0;
-    let pos = 0;
+// Helper function to encode AudioBuffer to MP3
+function encodeToMp3(audioBuffer: AudioBuffer, bitrate: number): Blob[] {
+    const mp3encoder = new lamejs.Mp3Encoder(1, audioBuffer.sampleRate, bitrate);
+    const samples = audioBuffer.getChannelData(0);
 
-    // Write WAV header
-    const setUint16 = (data: number) => {
-        view.setUint16(pos, data, true);
-        pos += 2;
-    };
+    // Convert float samples to 16-bit PCM
+    const sampleBlockSize = 1152; // LAME encoding block size
+    const mp3Data: Int8Array[] = [];
 
-    const setUint32 = (data: number) => {
-        view.setUint32(pos, data, true);
-        pos += 4;
-    };
-
-    // RIFF identifier
-    setUint32(0x46464952);
-    // File length minus RIFF identifier length and file description length
-    setUint32(length - 8);
-    // RIFF type
-    setUint32(0x45564157);
-    // Format chunk identifier
-    setUint32(0x20746d66);
-    // Format chunk length
-    setUint32(16);
-    // Sample format (raw)
-    setUint16(1);
-    // Channel count
-    setUint16(buffer.numberOfChannels);
-    // Sample rate
-    setUint32(buffer.sampleRate);
-    // Byte rate (sample rate * block align)
-    setUint32(buffer.sampleRate * buffer.numberOfChannels * 2);
-    // Block align (channel count * bytes per sample)
-    setUint16(buffer.numberOfChannels * 2);
-    // Bits per sample
-    setUint16(16);
-    // Data chunk identifier
-    setUint32(0x61746164);
-    // Data chunk length
-    setUint32(length - pos - 4);
-
-    // Write interleaved data
-    for (let i = 0; i < buffer.numberOfChannels; i++) {
-        channels.push(buffer.getChannelData(i));
+    const int16Samples = new Int16Array(samples.length);
+    for (let i = 0; i < samples.length; i++) {
+        const s = Math.max(-1, Math.min(1, samples[i]));
+        int16Samples[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
     }
 
-    while (pos < length) {
-        for (let i = 0; i < buffer.numberOfChannels; i++) {
-            let sample = Math.max(-1, Math.min(1, channels[i][offset]));
-            sample = sample < 0 ? sample * 0x8000 : sample * 0x7fff;
-            view.setInt16(pos, sample, true);
-            pos += 2;
+    // Encode in blocks
+    for (let i = 0; i < int16Samples.length; i += sampleBlockSize) {
+        const sampleChunk = int16Samples.subarray(i, i + sampleBlockSize);
+        const mp3buf = mp3encoder.encodeBuffer(sampleChunk);
+        if (mp3buf.length > 0) {
+            mp3Data.push(mp3buf);
         }
-        offset++;
     }
 
-    return new Blob([arrayBuffer], { type: 'audio/wav' });
+    // Flush remaining data
+    const mp3buf = mp3encoder.flush();
+    if (mp3buf.length > 0) {
+        mp3Data.push(mp3buf);
+    }
+
+    return mp3Data.map(data => new Blob([data], { type: 'audio/mp3' }));
 }
