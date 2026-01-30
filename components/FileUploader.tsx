@@ -48,8 +48,8 @@ export default function FileUploader({ onTranscriptionComplete, apiKey }: FileUp
             return;
         }
 
-        if (file.size > 10 * 1024 * 1024) {
-            setError("File size exceeds 10MB limit.");
+        if (file.size > 20 * 1024 * 1024) {
+            setError("File size exceeds 20MB limit.");
             return;
         }
 
@@ -165,7 +165,7 @@ export default function FileUploader({ onTranscriptionComplete, apiKey }: FileUp
                                     <span className="px-2 py-1 rounded bg-white/5 border border-white/10">WAV</span>
                                     <span className="px-2 py-1 rounded bg-white/5 border border-white/10">M4A</span>
                                     <span className="text-gray-600">•</span>
-                                    <span>Max 10MB</span>
+                                    <span>Max 20MB</span>
                                 </div>
                             </>
                         )}
