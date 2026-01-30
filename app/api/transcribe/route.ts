@@ -72,10 +72,10 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Validate file size (20MB)
-    if (file.size > 20 * 1024 * 1024) {
+    // Validate file size (4.5MB - Vercel serverless limit)
+    if (file.size > 4.5 * 1024 * 1024) {
       return NextResponse.json(
-        { error: "File size exceeds 20MB limit." },
+        { error: "File size exceeds 4.5MB limit." },
         { status: 400 }
       );
     }

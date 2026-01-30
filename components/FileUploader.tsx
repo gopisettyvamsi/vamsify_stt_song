@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, ChangeEvent } from "react";
+import { compressAudio, CompressionProgress } from "@/lib/audioCompressor";
 
 interface FileUploaderProps {
     onTranscriptionComplete: (data: { text: string; vtt: string; audioUrl: string }) => void;
@@ -11,6 +12,8 @@ export default function FileUploader({ onTranscriptionComplete, apiKey }: FileUp
     const [file, setFile] = useState<File | null>(null);
     const [isDragging, setIsDragging] = useState(false);
     const [isUploading, setIsUploading] = useState(false);
+    const [isCompressing, setIsCompressing] = useState(false);
+    const [compressionProgress, setCompressionProgress] = useState<CompressionProgress | null>(null);
     const [error, setError] = useState<string | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -62,10 +65,22 @@ export default function FileUploader({ onTranscriptionComplete, apiKey }: FileUp
         setIsUploading(true);
         setError(null);
 
-        const formData = new FormData();
-        formData.append("file", file);
-
         try {
+            let fileToUpload = file;
+
+            // Compress if file is larger than 4.5MB
+            if (file.size > 4.5 * 1024 * 1024) {
+                setIsCompressing(true);
+                fileToUpload = await compressAudio(file, (progress) => {
+                    setCompressionProgress(progress);
+                });
+                setIsCompressing(false);
+                setCompressionProgress(null);
+            }
+
+            const formData = new FormData();
+            formData.append("file", fileToUpload);
+
             const response = await fetch("/api/transcribe", {
                 method: "POST",
                 headers: apiKey ? {
@@ -93,6 +108,8 @@ export default function FileUploader({ onTranscriptionComplete, apiKey }: FileUp
             setError(err.message || "An error occurred during upload.");
         } finally {
             setIsUploading(false);
+            setIsCompressing(false);
+            setCompressionProgress(null);
         }
     };
 
@@ -181,11 +198,38 @@ export default function FileUploader({ onTranscriptionComplete, apiKey }: FileUp
                     </div>
                 )}
 
+                {isCompressing && compressionProgress && (
+                    <div className="mt-5 p-4 rounded-xl bg-blue-500/10 border border-blue-500/30 text-blue-300 text-sm">
+                        <div className="flex items-center justify-center gap-2 mb-2">
+                            <svg className="animate-spin h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd" />
+                            </svg>
+                            <span className="font-semibold">
+                                {compressionProgress.stage === 'decoding' && 'Decoding audio...'}
+                                {compressionProgress.stage === 'encoding' && 'Compressing...'}
+                                {compressionProgress.stage === 'complete' && 'Compression complete!'}
+                            </span>
+                        </div>
+                        <div className="w-full bg-blue-900/30 rounded-full h-2 mb-2">
+                            <div
+                                className="bg-blue-500 h-2 rounded-full transition-all duration-300"
+                                style={{ width: `${compressionProgress.progress}%` }}
+                            />
+                        </div>
+                        <div className="text-center text-xs text-blue-400">
+                            {(compressionProgress.originalSize / 1024 / 1024).toFixed(1)} MB
+                            {compressionProgress.currentSize && (
+                                <> → {(compressionProgress.currentSize / 1024 / 1024).toFixed(1)} MB</>
+                            )}
+                        </div>
+                    </div>
+                )}
+
                 <button
                     onClick={handleTranscribe}
-                    disabled={!file || isUploading}
+                    disabled={!file || isUploading || isCompressing}
                     className={`mt-6 w-full py-4 rounded-xl font-bold text-base text-white shadow-xl transition-all duration-300 relative overflow-hidden
-            ${!file || isUploading
+            ${!file || isUploading || isCompressing
                             ? "bg-gray-700 cursor-not-allowed opacity-50"
                             : "bg-gradient-to-r from-purple-600 via-pink-600 to-indigo-600 hover:shadow-2xl hover:shadow-purple-500/30 hover:scale-[1.02] active:scale-[0.98]"
                         }
@@ -194,7 +238,15 @@ export default function FileUploader({ onTranscriptionComplete, apiKey }: FileUp
                     {!file || isUploading ? null : (
                         <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000" />
                     )}
-                    {isUploading ? (
+                    {isCompressing ? (
+                        <div className="flex items-center justify-center gap-3">
+                            <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                            <span>Compressing Audio...</span>
+                        </div>
+                    ) : isUploading ? (
                         <div className="flex items-center justify-center gap-3">
                             <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
