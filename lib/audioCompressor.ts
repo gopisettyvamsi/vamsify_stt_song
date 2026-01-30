@@ -98,15 +98,13 @@ export async function compressAudio(
         });
 
         // Convert to MP3 using lamejs
-        const mp3Data = encodeToMp3(renderedBuffer, bitrate);
+        const mp3Blob = encodeToMp3(renderedBuffer, bitrate);
 
         onProgress?.({
             stage: 'encoding',
             progress: 90,
             originalSize: file.size,
         });
-
-        const mp3Blob = new Blob(mp3Data, { type: 'audio/mp3' });
 
         const compressedFile = new File(
             [mp3Blob],
@@ -131,7 +129,7 @@ export async function compressAudio(
 }
 
 // Helper function to encode AudioBuffer to MP3
-function encodeToMp3(audioBuffer: AudioBuffer, bitrate: number): Blob[] {
+function encodeToMp3(audioBuffer: AudioBuffer, bitrate: number): Blob {
     const mp3encoder = new lamejs.Mp3Encoder(1, audioBuffer.sampleRate, bitrate);
     const samples = audioBuffer.getChannelData(0);
 
@@ -160,5 +158,6 @@ function encodeToMp3(audioBuffer: AudioBuffer, bitrate: number): Blob[] {
         mp3Data.push(mp3buf);
     }
 
-    return mp3Data.map(data => new Blob([data], { type: 'audio/mp3' }));
+    // Combine all MP3 data chunks into a single Blob
+    return new Blob(mp3Data as BlobPart[], { type: 'audio/mp3' });
 }
