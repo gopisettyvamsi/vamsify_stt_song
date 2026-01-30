@@ -1,5 +1,3 @@
-import lamejs from 'lamejs';
-
 export interface CompressionProgress {
     stage: 'decoding' | 'encoding' | 'complete';
     progress: number; // 0-100
@@ -49,22 +47,10 @@ export async function compressAudio(
         // Calculate compression ratio needed
         const compressionRatio = file.size / MAX_SIZE;
 
-        // Determine bitrate based on compression needed
-        let bitrate = 64; // Default low bitrate for speech
-        if (compressionRatio > 4) {
-            bitrate = 32; // Very aggressive compression
-        } else if (compressionRatio > 2.5) {
-            bitrate = 48;
-        } else if (compressionRatio > 1.5) {
-            bitrate = 64;
-        } else {
-            bitrate = 96;
-        }
-
-        // Determine sample rate
+        // Determine sample rate based on compression needed
         let targetSampleRate = 16000; // Good for speech
         if (compressionRatio > 3) {
-            targetSampleRate = 12000; // More aggressive
+            targetSampleRate = 11025; // More aggressive
         } else if (compressionRatio > 2) {
             targetSampleRate = 16000;
         } else {
@@ -97,8 +83,8 @@ export async function compressAudio(
             originalSize: file.size,
         });
 
-        // Convert to MP3 using lamejs
-        const mp3Blob = encodeToMp3(renderedBuffer, bitrate);
+        // Use MediaRecorder to compress to webm/opus (very efficient for speech)
+        const compressedBlob = await encodeWithMediaRecorder(renderedBuffer, compressionRatio);
 
         onProgress?.({
             stage: 'encoding',
@@ -107,9 +93,9 @@ export async function compressAudio(
         });
 
         const compressedFile = new File(
-            [mp3Blob],
-            file.name.replace(/\.[^.]+$/, '.mp3'),
-            { type: 'audio/mp3' }
+            [compressedBlob],
+            file.name.replace(/\.[^.]+$/, '.webm'),
+            { type: 'audio/webm' }
         );
 
         onProgress?.({
@@ -119,7 +105,7 @@ export async function compressAudio(
             currentSize: compressedFile.size,
         });
 
-        console.log(`Compression: ${(file.size / 1024 / 1024).toFixed(2)}MB → ${(compressedFile.size / 1024 / 1024).toFixed(2)}MB (${bitrate}kbps, ${targetSampleRate}Hz)`);
+        console.log(`Compression: ${(file.size / 1024 / 1024).toFixed(2)}MB → ${(compressedFile.size / 1024 / 1024).toFixed(2)}MB (${targetSampleRate}Hz)`);
 
         return compressedFile;
     } catch (error) {
@@ -128,36 +114,66 @@ export async function compressAudio(
     }
 }
 
-// Helper function to encode AudioBuffer to MP3
-function encodeToMp3(audioBuffer: AudioBuffer, bitrate: number): Blob {
-    const mp3encoder = new lamejs.Mp3Encoder(1, audioBuffer.sampleRate, bitrate);
-    const samples = audioBuffer.getChannelData(0);
+// Helper function to encode AudioBuffer using MediaRecorder
+async function encodeWithMediaRecorder(audioBuffer: AudioBuffer, compressionRatio: number): Promise<Blob> {
+    return new Promise((resolve, reject) => {
+        // Create a new audio context for playback
+        const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
 
-    // Convert float samples to 16-bit PCM
-    const sampleBlockSize = 1152; // LAME encoding block size
-    const mp3Data: Int8Array[] = [];
+        // Create a MediaStreamDestination
+        const destination = audioContext.createMediaStreamDestination();
 
-    const int16Samples = new Int16Array(samples.length);
-    for (let i = 0; i < samples.length; i++) {
-        const s = Math.max(-1, Math.min(1, samples[i]));
-        int16Samples[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
-    }
+        // Create a buffer source
+        const source = audioContext.createBufferSource();
+        source.buffer = audioBuffer;
+        source.connect(destination);
 
-    // Encode in blocks
-    for (let i = 0; i < int16Samples.length; i += sampleBlockSize) {
-        const sampleChunk = int16Samples.subarray(i, i + sampleBlockSize);
-        const mp3buf = mp3encoder.encodeBuffer(sampleChunk);
-        if (mp3buf.length > 0) {
-            mp3Data.push(mp3buf);
+        // Determine bitrate based on compression ratio
+        let audioBitsPerSecond = 48000; // Default
+        if (compressionRatio > 4) {
+            audioBitsPerSecond = 24000; // Very aggressive
+        } else if (compressionRatio > 2.5) {
+            audioBitsPerSecond = 32000;
+        } else if (compressionRatio > 1.5) {
+            audioBitsPerSecond = 48000;
+        } else {
+            audioBitsPerSecond = 64000;
         }
-    }
 
-    // Flush remaining data
-    const mp3buf = mp3encoder.flush();
-    if (mp3buf.length > 0) {
-        mp3Data.push(mp3buf);
-    }
+        // Create MediaRecorder with opus codec (best compression for speech)
+        const mimeType = 'audio/webm;codecs=opus';
+        const mediaRecorder = new MediaRecorder(destination.stream, {
+            mimeType,
+            audioBitsPerSecond,
+        });
 
-    // Combine all MP3 data chunks into a single Blob
-    return new Blob(mp3Data as BlobPart[], { type: 'audio/mp3' });
+        const chunks: Blob[] = [];
+
+        mediaRecorder.ondataavailable = (e) => {
+            if (e.data.size > 0) {
+                chunks.push(e.data);
+            }
+        };
+
+        mediaRecorder.onstop = () => {
+            const blob = new Blob(chunks, { type: mimeType });
+            resolve(blob);
+        };
+
+        mediaRecorder.onerror = (e) => {
+            reject(new Error('MediaRecorder error'));
+        };
+
+        // Start recording
+        mediaRecorder.start();
+        source.start(0);
+
+        // Stop recording when audio finishes
+        source.onended = () => {
+            setTimeout(() => {
+                mediaRecorder.stop();
+                audioContext.close();
+            }, 100);
+        };
+    });
 }
