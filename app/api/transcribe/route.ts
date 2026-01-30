@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import styles from "./route.module.css"; // Dummy import to trigger css module generation if needed, but not really needed here.
 import OpenAI from "openai";
 
+// Configure route to handle larger payloads
+export const runtime = 'nodejs';
+export const maxDuration = 60; // Maximum execution time in seconds
+export const dynamic = 'force-dynamic';
+
 // Initialize OpenAI client with Groq configuration
 const openai = new OpenAI({
   apiKey: process.env.GROQ_API_KEY,
@@ -67,10 +72,10 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Validate file size (10MB)
-    if (file.size > 10 * 1024 * 1024) {
+    // Validate file size (20MB)
+    if (file.size > 20 * 1024 * 1024) {
       return NextResponse.json(
-        { error: "File size exceeds 10MB limit." },
+        { error: "File size exceeds 20MB limit." },
         { status: 400 }
       );
     }
